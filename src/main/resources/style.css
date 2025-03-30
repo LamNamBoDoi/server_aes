@@ -1,0 +1,47 @@
+.root {
+    -fx-font-family: 'Arial';
+    -fx-base: #3498db;
+}
+
+.button {
+    -fx-font-weight: bold;
+    -fx-padding: 8 15;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.1), 5, 0, 0, 1);
+}
+
+.button:hover {
+    -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.2), 8, 0, 0, 2);
+}
+
+.text-field, .text-area {
+    -fx-border-color: #bdc3c7;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-padding: 5;
+}
+
+.text-field:focused, .text-area:focused {
+    -fx-border-color: #3498db;
+    -fx-effect: dropshadow(three-pass-box, rgba(52,152,219,0.3), 5, 0, 0, 1);
+}
+
+.label {
+    -fx-text-fill: #2c3e50;
+}
+
+/* Custom scrollbar for log area */
+.scroll-bar:vertical {
+    -fx-background-color: #ecf0f1;
+}
+
+.scroll-bar:vertical .thumb {
+    -fx-background-color: #95a5a6;
+    -fx-background-insets: 0, 0, 0;
+    -fx-background-radius: 0;
+}
+
+.scroll-bar:vertical .thumb:hover {
+    -fx-background-color: #7f8c8d;
+}
