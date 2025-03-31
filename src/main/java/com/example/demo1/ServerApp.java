@@ -13,6 +13,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -20,19 +21,21 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 public class ServerApp extends Application {
-    private ServerSocket serverSocket;
+    private ServerSocket serverSocket;//lắng nghe kết nối từ client
     private boolean isRunning = false;
     private final TextArea logArea = new TextArea();
     private final Map<String, Socket> clients = new HashMap<>();
     private final Label clientCountLabel = new Label("Connected clients: 0");
 
+    // start đê thiết lập giao diên
     @Override
     public void start(Stage primaryStage) {
         primaryStage.setTitle("AES Transfer Server");
         try {
-            primaryStage.getIcons().add(new Image(getClass().getResourceAsStream("/server.png")));
+            primaryStage.getIcons().add(new Image(Objects.requireNonNull(getClass().getResourceAsStream("/server.png"))));
         } catch (Exception e) {
             System.err.println("Could not load logo: " + e.getMessage());
         }
@@ -49,7 +52,7 @@ public class ServerApp extends Application {
         // Header with logo and title
         ImageView logoView = new ImageView();
         try {
-            Image logo = new Image(getClass().getResourceAsStream("/logo.png"));
+            Image logo = new Image(Objects.requireNonNull(getClass().getResourceAsStream("/logo.png")));
             logoView.setImage(logo);
             logoView.setFitHeight(60);
             logoView.setPreserveRatio(true);
@@ -143,12 +146,12 @@ public class ServerApp extends Application {
         // Các nút
         Button clearLogButton = new Button("Clear Logs");
         clearLogButton.setStyle("-fx-background-color: #3498db; -fx-text-fill: white;");
-        clearLogButton.setGraphic(new ImageView(new Image(getClass().getResourceAsStream("/clear.png"), 16, 16, true, true)));
+        clearLogButton.setGraphic(new ImageView(new Image(Objects.requireNonNull(getClass().getResourceAsStream("/clear.png")), 16, 16, true, true)));
         clearLogButton.setOnAction(e -> logArea.clear());
 
         Button stopButton = new Button("Stop Server");
         stopButton.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white;");
-        stopButton.setGraphic(new ImageView(new Image(getClass().getResourceAsStream("/stop.png"), 16, 16, true, true)));
+        stopButton.setGraphic(new ImageView(new Image(Objects.requireNonNull(getClass().getResourceAsStream("/stop.png")), 16, 16, true, true)));
         stopButton.setOnAction(e -> stopServer());
 
         HBox buttonBox = new HBox(15, clearLogButton, stopButton);
@@ -172,6 +175,7 @@ public class ServerApp extends Application {
 
         return new Scene(layout, 600, 500);
     }
+
     private void startServer(String ip, int port) {
         new Thread(() -> {
             try {
@@ -181,7 +185,7 @@ public class ServerApp extends Application {
                 appendLog("Waiting for client connections...");
 
                 while (isRunning) {
-                    Socket clientSocket = serverSocket.accept();
+                    Socket clientSocket = serverSocket.accept();// chấp nhận kết nối từ client
                     new Thread(() -> handleClient(clientSocket)).start();
                 }
             } catch (IOException e) {
@@ -222,36 +226,75 @@ public class ServerApp extends Application {
         String username = null;
         try (DataInputStream input = new DataInputStream(socket.getInputStream());
              DataOutputStream output = new DataOutputStream(socket.getOutputStream())) {
+            // Thêm phần theo dõi kết nối
+            while (true) {
+                String message = input.readUTF().trim();
 
-            String message = input.readUTF().trim();
-            if (message.startsWith("LOGIN:")) {
-                username = message.substring(6).trim();
+                // Xử lý đăng nhập
+                if (message.startsWith("LOGIN:")) {
+                    username = message.substring(6).trim();
+                    if (username.isEmpty()) {
+                        output.writeUTF("ERROR: Invalid username!");
+                        continue;
+                    }
+                    if (clients.containsKey(username)) {
+                        output.writeUTF("ERROR: Username already exists!");
+                        continue;
+                    }
+                    clients.put(username, socket);
+                    appendLog("Client connected: " + username + " (" + socket.getInetAddress() + ")");
+                    updateClientCount();
+                    output.writeUTF("OK: Login successful!");
+                    continue;
+                }
 
-                clients.put(username, socket);
-                appendLog("Client connected: " + username + " (" + socket.getInetAddress() + ")");
-                updateClientCount();
-                output.writeUTF("OK: Login successful!");
+                // Nếu yêu cầu danh sách client
+                if (message.equals("LIST_CLIENTS")) {
+                    String clientList = String.join(",", clients.keySet());
+                    output.writeUTF(clientList.isEmpty() ? "NO_CLIENTS" : clientList);
+                    continue;
+                }
 
-                // Thêm phần theo dõi kết nối
-                while (true) {
-                    try {
-                        // Đọc tin nhắn từ client để phát hiện ngắt kết nối
-                        message = input.readUTF();
+                // Nhận file từ client
+                if (message.equals("START_FILE")) {
+                    String receiver = input.readUTF().trim();
+                    String fileName = input.readUTF().trim();
+                    long fileSize = input.readLong();
 
-                        // Nếu yêu cầu danh sách client
-                        if (message.equals("LIST_CLIENTS")) {
-                            String clientList = String.join(",", clients.keySet());
-                            output.writeUTF(clientList.isEmpty() ? "NO_CLIENTS" : clientList);
+                    File serverSaveDir = new File("Server_save");
+                    if (!serverSaveDir.exists()) {
+                        serverSaveDir.mkdirs();
+                    }
+                    File pendingFile = new File(serverSaveDir, fileName);
+
+                    appendLog("📥 Receiving file: " + fileName + " (" + fileSize + " bytes)");
+
+                    try (FileOutputStream fos = new FileOutputStream(pendingFile)) {
+                        byte[] buffer = new byte[65536]; // 64KB buffer giúp giảm số lần đọc
+                        long totalRead = 0;
+                        int bytesRead;
+
+                        // Đọc và ghi dữ liệu vào file
+                        while (totalRead < fileSize) {
+                            bytesRead = input.read(buffer);
+                            if (bytesRead == -1) break; // Kết thúc khi không còn dữ liệu
+                            fos.write(buffer, 0, bytesRead);
+                            totalRead += bytesRead;
                         }
-
-                    } catch (IOException e) {
-                        // Client đã ngắt kết nối
-                        break;
+                    }
+                    // Kiểm tra xem đã nhận đủ file chưa
+                    if (pendingFile.length() == fileSize) {
+                        appendLog("✅ File " + fileName + " received successfully!");
+                        output.writeUTF("OK: File " + fileName + " received!");
+                        sendFileToReceiver(receiver, pendingFile);
+                    } else {
+                        appendLog("⚠️ File " + fileName + " may be corrupted! Expected " + fileSize + " bytes, got " + pendingFile.length() + " bytes");
+                        output.writeUTF("ERROR: File transfer incomplete!");
                     }
                 }
             }
         } catch (IOException e) {
-            appendLog("Client connection error: " + e.getMessage());
+//            appendLog("Client connection error: " + e.getMessage());
         } finally {
             if (username != null) {
                 clients.remove(username);
@@ -265,6 +308,41 @@ public class ServerApp extends Application {
             }
         }
     }
+
+    private void sendFileToReceiver(String receiver, File file) {
+        // Kiểm tra xem receiver có trong danh sách clients không
+        Socket receiverSocket = clients.get(receiver);
+        if (receiverSocket != null) {
+            try {
+                DataOutputStream output = new DataOutputStream(receiverSocket.getOutputStream());
+
+                // Gửi thông tin về file (tên file, kích thước file)
+                output.writeUTF("FILE");
+                output.writeUTF(file.getName());
+                output.writeLong(file.length());
+
+                // Đọc và gửi file
+                try (FileInputStream fileIn = new FileInputStream(file)) {
+                    byte[] buffer = new byte[65536]; // Tăng buffer lên 64KB
+                    int bytesRead;
+                    while ((bytesRead = fileIn.read(buffer)) != -1) {
+                        output.write(buffer, 0, bytesRead);
+                    }
+                }
+
+                output.flush(); // Đảm bảo tất cả dữ liệu được gửi đi
+
+                // Thực hiện log (Có thể thay đổi để in lên GUI nếu cần)
+                appendLog("📤 File " + file.getName() + " sent to " + receiver);
+            } catch (IOException e) {
+                appendLog("❌ Error sending file to " + receiver + ": " + e.getMessage());
+            }
+        } else {
+            // Nếu receiver không có trong danh sách clients
+            appendLog("⚠️ " + receiver + " is offline, file not sent.");
+        }
+    }
+
 
     private void appendLog(String text) {
         Platform.runLater(() -> {

@@ -1,0 +1,1 @@
+Khi thực hiện mã hóa trong chế độ CBC, dữ liệu được chia thành các block có độ dài cố định (thường là 16 byte). Nếu dữ liệu đầu vào không đủ độ dài để tạo thành một block, hoặc nếu dữ liệu đầu vào không chia hết cho độ dài block, cần thêm padding để điền vào các byte trống.
